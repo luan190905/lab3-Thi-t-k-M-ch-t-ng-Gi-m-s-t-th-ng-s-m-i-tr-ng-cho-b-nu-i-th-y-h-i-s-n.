@@ -2,9 +2,8 @@
 
 **Sinh viên:** Lê Văn Luân  
 **MSSV:** 231432285  
-**Lớp:** 231432285
+**Lớp:** N02
 
-**GitHub:** `https://github.com/<tên-bạn>/lab3-freertos-aquarium`
 
 ## 1. Giới thiệu RTOS và FreeRTOS
 
