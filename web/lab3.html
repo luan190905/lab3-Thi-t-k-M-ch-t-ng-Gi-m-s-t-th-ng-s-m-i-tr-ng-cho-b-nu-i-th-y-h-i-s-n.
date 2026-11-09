@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giám sát bể thủy sản</title>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+<style>
+  body{font-family:Arial,sans-serif;background:#eef3f8;margin:0;padding:16px;text-align:center}
+  .cards,.btns{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:12px 0}
+  .card{background:#fff;border-radius:12px;padding:16px 28px;box-shadow:0 2px 6px #0002}
+  .value{font-size:2.4rem;font-weight:bold;color:#0a66c2}
+  .chart-box{background:#fff;border-radius:12px;padding:12px;margin:12px auto;max-width:720px}
+  button{padding:12px 24px;font-size:1rem;border:0;border-radius:8px;color:#fff;background:#888;cursor:pointer}
+  button.on{background:#2e9e4f}
+</style>
+</head>
+<body>
+<h2>Giám sát môi trường bể nuôi thủy, hải sản</h2>
+<p>MQTT: <b id="status">Đang kết nối...</b> | Chế độ: <b id="mode">--</b></p>
+
+<div class="cards">
+  <div class="card">Mực nước<br><span class="value" id="level">--</span> cm</div>
+  <div class="card">Nhiệt độ bể<br><span class="value" id="temp">--</span> °C</div>
+</div>
+
+<div class="btns">
+  <button id="btnPump">Máy bơm vào: OFF</button>
+  <button id="btnValve">Van thoát ra: OFF</button>
+  <button id="btnMode" style="background:#0a66c2">Chuyển sang MANUAL</button>
+</div>
+
+<div class="chart-box"><canvas id="chLevel"></canvas></div>
+<div class="chart-box"><canvas id="chTemp"></canvas></div>
+
+<script>
+const P = 'lab3/thuysan/';
+const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+const $ = id => document.getElementById(id);
+let pumpOn = false, valveOn = false, manual = false;
+
+// ----- Biểu đồ thời gian thực -----
+function makeChart(id, label, color) {
+  return new Chart($(id), {
+    type: 'line',
+    data: { labels: [], datasets: [{ label, data: [], borderColor: color, tension: .3 }] },
+    options: { animation: false }
+  });
+}
+const chLevel = makeChart('chLevel', 'Mực nước (cm)', '#0a66c2');
+const chTemp  = makeChart('chTemp',  'Nhiệt độ (°C)', '#d9534f');
+function addPoint(chart, v) {
+  chart.data.labels.push(new Date().toLocaleTimeString());
+  chart.data.datasets[0].data.push(v);
+  if (chart.data.labels.length > 30) {
+    chart.data.labels.shift(); chart.data.datasets[0].data.shift();
+  }
+  chart.update();
+}
+
+// ----- Kết nối và nhận dữ liệu -----
+client.on('connect', () => {
+  $('status').textContent = 'Đã kết nối';
+  client.subscribe(P + '+');          // level, temp, pump, valve, mode
+});
+client.on('close', () => $('status').textContent = 'Mất kết nối');
+
+client.on('message', (topic, payload) => {
+  const v = payload.toString();
+  switch (topic.replace(P, '')) {
+    case 'level': $('level').textContent = v; addPoint(chLevel, +v); break;
+    case 'temp':  $('temp').textContent  = v; addPoint(chTemp,  +v); break;
+    case 'pump':
+      pumpOn = +v > 0;
+      $('btnPump').textContent = 'Máy bơm vào: ' + (pumpOn ? v + '%' : 'OFF');
+      $('btnPump').className = pumpOn ? 'on' : '';
+      break;
+    case 'valve':
+      valveOn = (v === 'ON');
+      $('btnValve').textContent = 'Van thoát ra: ' + v;
+      $('btnValve').className = valveOn ? 'on' : '';
+      break;
+    case 'mode':
+      manual = (v === 'MANUAL');
+      $('mode').textContent = v;
+      $('btnMode').textContent = manual ? 'Chuyển sang AUTO' : 'Chuyển sang MANUAL';
+      break;
+  }
+});
+
+// ----- Điều khiển (publish lệnh) -----
+$('btnPump').onclick  = () => manual && client.publish(P + 'cmd/pump',  pumpOn ? 'OFF' : 'ON');
+$('btnValve').onclick = () => manual && client.publish(P + 'cmd/valve', valveOn ? 'OFF' : 'ON');
+$('btnMode').onclick  = () => client.publish(P + 'cmd/mode', manual ? 'AUTO' : 'MANUAL');
+</script>
+</body>
+</html>
